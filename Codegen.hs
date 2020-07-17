@@ -27,6 +27,17 @@ import Utils
 double :: AST.Type
 double = ASTtype.double
 
+-- Functions to refer to references
+local ::  AST.Name -> AST.Operand
+local = AST.LocalReference double
+
+global ::  AST.Name -> ASTconst.Constant
+global = ASTconst.GlobalReference double
+
+-- will refer to toplevel or externally declared fns
+externFn :: AST.Name -> AST.Operand
+externFn = AST.ConstantOperand . ASTconst.GlobalReference double
+
 data FunctionBlock
     = FunctionBlock {
         stack :: [AST.Named AST.Instruction]
@@ -49,6 +60,7 @@ data TopState
 -- Stores state of generation
 newtype Cgen a = Cgen (State TopState a)
   deriving (Functor, Applicative, Monad, MonadState TopState)
+
 
 -- Function Block functions
 emptyFunctionBlock :: Int -> FunctionBlock
@@ -113,6 +125,25 @@ getVar name = do
         Nothing -> error ("Variable not in scope: " ++ show name)
         Just op -> return op
 
+-- each instruction increments this count
+incIns :: Cgen Word
+incIns = do
+    cnt <- gets count
+    modify (\s -> s {count = cnt + 1})
+    return (cnt+1)
+
+newInstr :: AST.Instruction -> Cgen (AST.Operand)
+newInstr instr = do
+    cnt <- incIns
+    let ref = (AST.UnName cnt)
+    blk <- currentFunctionBlock
+    let i = stack blk
+    modifyFunctionBlock (blk { stack = (ref AST.:= instr) : i })
+    return (local ref)
+
+newTerm :: AST.Named AST.Terminator -> Cgen (AST.Named AST.Terminator)
+newTerm term = currentFunctionBlock >>= \c -> modifyFunctionBlock c { terminator = Just term } >> return term
+
 -- LLVM monad
 newtype LLVM a = LLVM (State AST.Module a)
   deriving (Functor, Applicative, Monad, MonadState AST.Module )
@@ -149,3 +180,51 @@ externalFn fnname argtypes rettype = addDefinition $
       , ASTglobal.returnType  = rettype
       , ASTglobal.basicBlocks = []
     }
+
+-- Arithmetic, contstants (copied functions)
+fadd :: AST.Operand -> AST.Operand -> Cgen AST.Operand
+fadd a b = newInstr (AST.FAdd AST.noFastMathFlags a b [])
+
+fsub :: AST.Operand -> AST.Operand -> Cgen AST.Operand
+fsub a b = newInstr (AST.FSub AST.noFastMathFlags a b [])
+
+fmul :: AST.Operand -> AST.Operand -> Cgen AST.Operand
+fmul a b = newInstr (AST.FMul AST.noFastMathFlags a b [])
+
+fdiv :: AST.Operand -> AST.Operand -> Cgen AST.Operand
+fdiv a b = newInstr (AST.FDiv AST.noFastMathFlags a b [])
+
+fcmp :: ASTfpp.FloatingPointPredicate -> AST.Operand -> AST.Operand -> Cgen AST.Operand
+fcmp cond a b = newInstr $ AST.FCmp cond a b []
+
+cons :: ASTconst.Constant -> AST.Operand
+cons = AST.ConstantOperand
+
+uitofp :: AST.Type -> AST.Operand -> Cgen AST.Operand
+uitofp ty a = newInstr $ AST.UIToFP a ty []
+
+toArgs :: [AST.Operand] -> [(AST.Operand, [ASTattr.ParameterAttribute])]
+toArgs = map (\x -> (x, []))
+
+-- Effects
+call :: AST.Operand -> [AST.Operand] -> Cgen AST.Operand
+call fn args = newInstr $ AST.Call Nothing ASTcc.C [] (Right fn) (toArgs args) [] []
+
+alloca :: AST.Type -> Cgen AST.Operand
+alloca ty = newInstr $ AST.Alloca ty Nothing 0 []
+
+store :: AST.Operand -> AST.Operand -> Cgen AST.Operand
+store ptr val = newInstr $ AST.Store False ptr val Nothing 0 []
+
+load :: AST.Operand -> Cgen AST.Operand
+load ptr = newInstr $ AST.Load False ptr Nothing 0 []
+
+-- Control Flow
+br :: AST.Name -> Cgen (AST.Named AST.Terminator)
+br val = newTerm $ AST.Do $ AST.Br val []
+
+cbr :: AST.Operand -> AST.Name -> AST.Name -> Cgen (AST.Named AST.Terminator)
+cbr cond tr fl = newTerm $ AST.Do $ AST.CondBr cond tr fl []
+
+ret :: AST.Operand -> Cgen (AST.Named AST.Terminator)
+ret val = newTerm $ AST.Do $ AST.Ret (Just val) []
