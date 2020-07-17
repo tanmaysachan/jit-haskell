@@ -17,7 +17,7 @@ precendenceTable = [[binary "*" Multiply LibExpr.AssocLeft, binary "/" Divide Li
 
 -- treating ints as floats for now
 int :: Parser Expr
-int = integer >>= \x -> return (Float x)
+int = integer >>= \x -> return (Float (fromIntegral x))
 
 floating :: Parser Expr
 floating = float >>= \x -> return (Float x)
