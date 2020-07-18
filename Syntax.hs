@@ -4,7 +4,7 @@ data Expr = Float Double
           | BinOp Op Expr Expr
           | Var String
           | Call String [Expr]
-          | Function String [Expr] Expr
+          | Function String [String] Expr
           | Extern String [Expr]
           deriving (Eq, Ord, Show)
 

@@ -61,6 +61,11 @@ data TopState
 newtype Cgen a = Cgen (State TopState a)
   deriving (Functor, Applicative, Monad, MonadState TopState)
 
+emptyTopState :: TopState
+emptyTopState = TopState "entry" Map.empty [] 1 0 Map.empty
+
+execGen :: Cgen a -> TopState
+execGen (Cgen a) = execState a emptyTopState
 
 -- Function Block functions
 emptyFunctionBlock :: Int -> FunctionBlock
@@ -79,6 +84,18 @@ getUniqueName name nmap =
     case Map.lookup name nmap of
         Nothing -> (name, Map.insert name 1 nmap)
         Just ix -> (name ++ show ix, Map.insert name (ix+1) nmap)
+
+sortFunctionBlocks :: [(String, FunctionBlock)] -> [(String, FunctionBlock)]
+sortFunctionBlocks = sortBy (on compare (Codegen.id . snd))
+
+makeFunctionBlock :: (String, FunctionBlock) -> ASTglobal.BasicBlock
+makeFunctionBlock (name, (FunctionBlock st ter _)) = ASTglobal.BasicBlock (AST.Name (toSBS name)) (reverse st) (toterm ter)
+    where
+        toterm (Just x) = x
+        toterm Nothing = error ("Block has no terminator: " ++ (show name))
+
+createFunctionBlocks :: TopState -> [ASTglobal.BasicBlock]
+createFunctionBlocks ts = map makeFunctionBlock (sortFunctionBlocks (Map.toList (blockMap ts)))
 
 addFunctionBlock :: String -> Cgen String
 addFunctionBlock blockName = do
@@ -161,26 +178,27 @@ addDefinition d = do
   modify (\s -> s { AST.moduleDefinitions = defs ++ [d]})
 
 -- define a regular function
-defineFn :: String -> [(AST.Type, String)] -> [ASTglobal.BasicBlock] -> AST.Type -> LLVM ()
+defineFn :: String -> [(AST.Type, AST.Name)] -> [ASTglobal.BasicBlock] -> AST.Type -> LLVM ()
 defineFn fnname argtypes blocks rettype = addDefinition $
     AST.GlobalDefinition $ ASTglobal.functionDefaults {
         ASTglobal.name        = AST.Name (toSBS fnname)
-      , ASTglobal.parameters  = ([ASTglobal.Parameter _type (AST.Name (toSBS name)) [] | (_type, name) <- argtypes], False)
+      , ASTglobal.parameters  = ([ASTglobal.Parameter _type name [] | (_type, name) <- argtypes], False)
       , ASTglobal.returnType  = rettype
       , ASTglobal.basicBlocks = blocks
     }
 
 -- define an extern
-externalFn :: String -> [(AST.Type, String)] -> AST.Type -> LLVM ()
+externalFn :: String -> [(AST.Type, AST.Name)] -> AST.Type -> LLVM ()
 externalFn fnname argtypes rettype = addDefinition $
     AST.GlobalDefinition $ ASTglobal.functionDefaults {
         ASTglobal.name        = AST.Name (toSBS fnname)
       , ASTglobal.linkage     = ASTlink.External
-      , ASTglobal.parameters  = ([ASTglobal.Parameter _type (AST.Name (toSBS name)) [] | (_type, name) <- argtypes], False)
+      , ASTglobal.parameters  = ([ASTglobal.Parameter _type name [] | (_type, name) <- argtypes], False)
       , ASTglobal.returnType  = rettype
       , ASTglobal.basicBlocks = []
     }
 
+-- names similar to llvm IR names
 -- Arithmetic, contstants (copied functions)
 fadd :: AST.Operand -> AST.Operand -> Cgen AST.Operand
 fadd a b = newInstr (AST.FAdd AST.noFastMathFlags a b [])
