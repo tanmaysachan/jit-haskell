@@ -35,8 +35,8 @@ global ::  AST.Name -> ASTconst.Constant
 global = ASTconst.GlobalReference double
 
 -- will refer to toplevel or externally declared fns
-externFn :: AST.Name -> AST.Operand
-externFn = AST.ConstantOperand . ASTconst.GlobalReference double
+externRef :: AST.Name -> AST.Operand
+externRef = AST.ConstantOperand . ASTconst.GlobalReference double
 
 data FunctionBlock
     = FunctionBlock {
@@ -64,8 +64,8 @@ newtype Cgen a = Cgen (State TopState a)
 emptyTopState :: TopState
 emptyTopState = TopState "entry" Map.empty [] 1 0 Map.empty
 
-execGen :: Cgen a -> TopState
-execGen (Cgen a) = execState a emptyTopState
+getEmptyTopState :: Cgen a -> TopState
+getEmptyTopState (Cgen a) = execState a emptyTopState
 
 -- Function Block functions
 emptyFunctionBlock :: Int -> FunctionBlock
@@ -168,8 +168,8 @@ newtype LLVM a = LLVM (State AST.Module a)
 runLLVM :: AST.Module -> LLVM a -> AST.Module
 runLLVM mod (LLVM m) = execState m mod
 
-emptyModule :: ShortByteString -> AST.Module
-emptyModule label = AST.defaultModule { AST.moduleName = label }
+emptyModule :: String -> AST.Module
+emptyModule label = AST.defaultModule { AST.moduleName = (toSBS label)}
 
 -- add definition to LLVM module def
 addDefinition :: AST.Definition -> LLVM ()

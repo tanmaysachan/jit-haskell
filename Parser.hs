@@ -29,7 +29,7 @@ function :: Parser Expr
 function = do
     reserved "def"
     func <- identifier
-    args <- parens (commaSep variable)
+    args <- parens (commaSep identifier)
     body <- expr
     return (Function func args body)
 
@@ -37,7 +37,7 @@ extern :: Parser Expr
 extern = do
     reserved "extern"
     name <- identifier
-    args <- parens (commaSep variable)
+    args <- parens (commaSep identifier)
     return (Extern name args)
 
 call :: Parser Expr

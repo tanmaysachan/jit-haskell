@@ -10,7 +10,7 @@ import qualified LLVM.Module as Mod
 import qualified LLVM.Context as Context
 
 import qualified LLVM.AST as AST
-import qualified LLVM.AST.Constant as ASTcons
+import qualified LLVM.AST.Constant as ASTconst
 import qualified LLVM.AST.Float as ASTfl
 import qualified LLVM.AST.FloatingPointPredicate as ASTfpp
 
@@ -18,21 +18,69 @@ import Codegen
 import qualified Syntax
 import Utils
 
+binops = Map.fromList [
+      (Syntax.Plus, fadd)
+    , (Syntax.Minus, fsub)
+    , (Syntax.Multiply, fmul)
+    , (Syntax.Divide, fdiv)
+  ]
+
+exprToModule :: Syntax.Expr -> Cgen AST.Operand
+exprToModule (Syntax.Float _a) = return (cons (ASTconst.Float (ASTfl.Double _a)))
+exprToModule (Syntax.BinOp Syntax.Equals (Syntax.Var _a) _b) = do
+    a <- getVar _a
+    val <- exprToModule _b
+    store a val
+    return val
+exprToModule (Syntax.BinOp op _a _b) = do
+    case Map.lookup op binops of
+        Just f -> do
+            a <- exprToModule _a
+            b <- exprToModule _b
+            f a b
+        Nothing -> error "No operator found"
+exprToModule (Syntax.Var _a) = getVar _a >>= \a -> load a
+exprToModule (Syntax.Call _name _args) = do
+    mappedargs <- mapM exprToModule _args
+    call (externRef (AST.Name (toSBS _name))) mappedargs
+
 -- map all args to type double
 modArgs :: [String] -> [(AST.Type, AST.Name)]
 modArgs = map (\t -> (double, AST.Name $ toSBS t))
 
-functionsToLLVM :: Syntax.Expr -> LLVM ()
-functionsToLLVM (Syntax.Function _name _args _body) = do
+functionsToModule :: Syntax.Expr -> LLVM ()
+functionsToModule (Syntax.Function _name _args _body) = do
     defineFn name args body double
     where
         args = modArgs _args
         name = _name
-        body = createFunctionBlocks $ execGen $ do
+        body = createFunctionBlocks $ getEmptyTopState $ do
             entryBlock <- addFunctionBlock "entry"
             setCurrentFunctionBlock entryBlock
-            forM args $ \a -> do
-                getmem <- alloca double
-                store getmem (local (AST.Name a))
-                assign a getmem
-            indExprGen _body >>= ret
+            -- llvm allocate memory and assign operand
+            forM _args $ \a -> alloca double >>= \s -> store s (local (AST.Name (toSBS a))) >> assign a s
+            exprToModule _body >>= ret
+functionsToModule (Syntax.Extern _name _args) = do
+    externalFn name args double
+    where
+        args = modArgs _args
+        name = _name
+-- just expr
+functionsToModule _body = do
+    defineFn "main" args body double
+    where
+        args = []
+        body = createFunctionBlocks $ getEmptyTopState $ do
+            entryBlock <- addFunctionBlock "entry"
+            setCurrentFunctionBlock entryBlock
+            exprToModule _body >>= ret
+
+codegen :: AST.Module -> [Syntax.Expr] -> IO AST.Module
+codegen mod fns = Context.withContext $ \context ->
+    Mod.withModuleFromAST context newast $ \m -> do
+        llstr <- Mod.moduleLLVMAssembly m
+        putStrLn $ toStr llstr
+        return newast
+    where
+        modn = mapM functionsToModule fns
+        newast = runLLVM mod modn
