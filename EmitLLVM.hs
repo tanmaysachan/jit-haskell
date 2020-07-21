@@ -46,7 +46,7 @@ exprToModule (Syntax.Call _name _args) = do
 
 -- map all args to type double
 modArgs :: [String] -> [(AST.Type, AST.Name)]
-modArgs = map (\t -> (double, AST.Name $ toSBS t))
+modArgs = map (\t -> (double, AST.Name (toSBS t)))
 
 functionsToModule :: Syntax.Expr -> LLVM ()
 functionsToModule (Syntax.Function _name _args _body) = do
@@ -58,7 +58,9 @@ functionsToModule (Syntax.Function _name _args _body) = do
             entryBlock <- addFunctionBlock "entry"
             setCurrentFunctionBlock entryBlock
             -- llvm allocate memory and assign operand
-            forM _args $ \a -> alloca double >>= \s -> store s (local (AST.Name (toSBS a))) >> assign a s
+            forM _args $ \a -> do
+                ptr <- alloca double
+                assign a ptr
             exprToModule _body >>= ret
 functionsToModule (Syntax.Extern _name _args) = do
     externalFn name args double
@@ -79,7 +81,7 @@ codegen :: AST.Module -> [Syntax.Expr] -> IO AST.Module
 codegen mod fns = Context.withContext $ \context ->
     Mod.withModuleFromAST context newast $ \m -> do
         llstr <- Mod.moduleLLVMAssembly m
-        putStrLn $ toStr llstr
+        putStrLn (toStr llstr)
         return newast
     where
         modn = mapM functionsToModule fns

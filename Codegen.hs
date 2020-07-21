@@ -25,7 +25,7 @@ import qualified LLVM.AST.Type as ASTtype
 import Utils
 
 double :: AST.Type
-double = ASTtype.double
+double = ASTtype.FloatingPointType AST.DoubleFP
 
 -- Functions to refer to references
 local ::  AST.Name -> AST.Operand

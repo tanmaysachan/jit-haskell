@@ -13,7 +13,9 @@ binary s f assoc = LibExpr.Infix (reservedOp s >> return (BinOp f)) assoc
 
 -- *,/ and +,- equal precedence, left associative
 precendenceTable = [[binary "*" Multiply LibExpr.AssocLeft, binary "/" Divide LibExpr.AssocLeft]
-                    ,[binary "+" Plus LibExpr.AssocLeft, binary "-" Minus LibExpr.AssocLeft]]
+                    ,[binary "+" Plus LibExpr.AssocLeft, binary "-" Minus LibExpr.AssocLeft]
+                    ,[binary "=" Equals LibExpr.AssocRight]
+                ]
 
 -- treating ints as floats for now
 int :: Parser Expr
