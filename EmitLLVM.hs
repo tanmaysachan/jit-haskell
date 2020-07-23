@@ -17,6 +17,7 @@ import qualified LLVM.AST.FloatingPointPredicate as ASTfpp
 import Codegen
 import qualified Syntax
 import Utils
+import Jitopt
 
 binops = Map.fromList [
       (Syntax.Plus, fadd)
@@ -60,6 +61,7 @@ functionsToModule (Syntax.Function _name _args _body) = do
             -- llvm allocate memory and assign operand
             forM _args $ \a -> do
                 ptr <- alloca double
+                nstore ptr (local (AST.Name $ toSBS a))
                 assign a ptr
             exprToModule _body >>= ret
 functionsToModule (Syntax.Extern _name _args) = do
@@ -78,11 +80,11 @@ functionsToModule _body = do
             exprToModule _body >>= ret
 
 codegen :: AST.Module -> [Syntax.Expr] -> IO AST.Module
-codegen mod fns = Context.withContext $ \context ->
-    Mod.withModuleFromAST context newast $ \m -> do
-        llstr <- Mod.moduleLLVMAssembly m
-        putStrLn (toStr llstr)
-        return newast
+codegen mod fns = do
+    res <- runJit oldast
+    case res of
+        Right newast -> return newast
+        Left err -> putStrLn err >> return oldast
     where
         modn = mapM functionsToModule fns
-        newast = runLLVM mod modn
+        oldast = runLLVM mod modn

@@ -149,6 +149,8 @@ incIns = do
     modify (\s -> s {count = cnt + 1})
     return (cnt+1)
 
+-- assigning a reference directly is not working, figure out
+-- something later, right now arguments for functions are broken.
 newInstr :: AST.Instruction -> Cgen (AST.Operand)
 newInstr instr = do
     cnt <- incIns
@@ -156,6 +158,12 @@ newInstr instr = do
     blk <- currentFunctionBlock
     let i = stack blk
     modifyFunctionBlock (blk { stack = (ref AST.:= instr) : i })
+    return (local ref)
+
+nnewInstr :: AST.Instruction -> Cgen (AST.Operand)
+nnewInstr instr = do
+    cnt <- incIns
+    let ref = (AST.UnName cnt)
     return (local ref)
 
 newTerm :: AST.Named AST.Terminator -> Cgen (AST.Named AST.Terminator)
@@ -233,6 +241,9 @@ alloca ty = newInstr $ AST.Alloca ty Nothing 0 []
 
 store :: AST.Operand -> AST.Operand -> Cgen AST.Operand
 store ptr val = newInstr $ AST.Store False ptr val Nothing 0 []
+
+nstore :: AST.Operand -> AST.Operand -> Cgen AST.Operand
+nstore ptr val = nnewInstr $ AST.Store False ptr val Nothing 0 []
 
 load :: AST.Operand -> Cgen AST.Operand
 load ptr = newInstr $ AST.Load False ptr Nothing 0 []
