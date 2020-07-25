@@ -49,6 +49,6 @@ runJIT mod = do
                     case mainfn of
                       Just fn -> do
                         res <- run fn
-                        putStrLn $ "Evaluated to: " ++ show res
+                        putStrLn $ "Returned: " ++ show res
                       Nothing -> return ()
                 return optmod
