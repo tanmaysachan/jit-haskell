@@ -81,10 +81,8 @@ functionsToModule _body = do
 
 codegen :: AST.Module -> [Syntax.Expr] -> IO AST.Module
 codegen mod fns = do
-    res <- runJit oldast
-    case res of
-        Right newast -> return newast
-        Left err -> putStrLn err >> return oldast
+    newast <- runJIT ast
+    return newast
     where
         modn = mapM functionsToModule fns
-        oldast = runLLVM mod modn
+        ast = runLLVM mod modn
